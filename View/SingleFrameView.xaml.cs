@@ -39,4 +39,6 @@ namespace MJPEGStreamPlayer.View
 
         }
     }
+      
+
 }

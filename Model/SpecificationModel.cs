@@ -6,6 +6,10 @@ using System.Net.Http;
 using System.Xml;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+
 
 namespace MJPEGStreamPlayer.Model
 {
@@ -21,11 +25,9 @@ namespace MJPEGStreamPlayer.Model
         private readonly string _url = "http://demo.macroscop.com:8080/configex?login=root";
         private XmlDocument _doc;
         private List<Camera> _cameras;
-
         
         public List<Camera> Cameras { get { return _cameras; } }
 
-        public event EventHandler RaiseSpecReadyEvent;
 
         public SpecificationModel()
         {
@@ -47,7 +49,6 @@ namespace MJPEGStreamPlayer.Model
             return this;
         }
 
-
         public async Task<XmlDocument> GetSpecInfoAsync()
         {
             XmlDocument doc = new XmlDocument();
@@ -64,15 +65,13 @@ namespace MJPEGStreamPlayer.Model
                 }
                 catch (HttpRequestException e)
                 {
-                    //TODO: Add notification
+                    //TODO:
                 }
             }
 
             return doc;
 
         }
-
-     
 
         /// <summary>
         /// Process downloaded XML to retrieve cameras identity

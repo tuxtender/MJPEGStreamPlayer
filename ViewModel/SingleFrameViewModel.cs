@@ -6,31 +6,40 @@ using System.ComponentModel;
 using System.Collections.ObjectModel;
 using MJPEGStreamPlayer.Model;
 using System.Windows.Media.Imaging;
-
 using System.Threading;
 using System.Threading.Tasks;
+using System.Net.Sockets;
+using System.Net.Http;
+using System.Net;
+using System.Net.Sockets;
 
-using System.Drawing;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Input;
+
 
 namespace MJPEGStreamPlayer.ViewModel
 {
     class SingleFrameViewModel : NotifyPropertyChangedBase
     {
+        private bool _isError;
         private MjpegStreamDecoder _stream;
         private SpecificationModel _specModel;
         private ObservableCollection<CameraViewModel> _cameras;
         private BitmapImage _bitmap;
-
         private CancellationTokenSource _cts;
 
         public ObservableCollection<CameraViewModel> Cameras { get; set; }
-
         public BitmapImage Frame { get { return _bitmap; } }
-
+        public bool Error 
+        {
+            get { return _isError; }
+            private set 
+            {
+                _isError = value;
+                OnPropertyChanged(nameof(ErrorMessage));
+                OnPropertyChanged(nameof(Error));
+            }
+        }
+        public string ErrorMessage { get; private set; }
+       
 
         public SingleFrameViewModel()
         {
@@ -38,17 +47,17 @@ namespace MJPEGStreamPlayer.ViewModel
             _cameras = new ObservableCollection<CameraViewModel>();
 
             SetStartScreen();
-
-            CameraViewModel empty = new CameraViewModel(new Camera("None", "None"));
-            _cameras.Add(empty);
-            Cameras = _cameras;
+            MakeDummyItem();
 
             InitSpecificationModelAsync();
 
             _stream = new MjpegStreamDecoder();
             _stream.RaiseFrameCompleteEvent += HandleFrameRecieved;
+            //_stream.RaiseStreamFailedEvent += HandleStreamError;
+
             _cts = new CancellationTokenSource();
-            
+
+            _isError = false;
 
         }
 
@@ -64,44 +73,47 @@ namespace MJPEGStreamPlayer.ViewModel
 
         }
 
-        public void CloseStream()
+        private void MakeDummyItem(string text="None")
         {
-            
-            _cts.Cancel();
-
+            CameraViewModel empty = new CameraViewModel(new Camera(text, text));
+            _cameras.Add(empty);
+            Cameras = _cameras;
         }
 
-        public void ChangeCamera(CameraViewModel cameraVM)
+        private void CloseStream()
         {
-            //CloseStream();
             _cts.Cancel();
+            Error = false;
+        }
+
+        public async void ChangeCamera(CameraViewModel cameraVM)
+        {
+            CloseStream();
 
             if(cameraVM.Name == "None")
             {
                 SetStartScreen();
                 return;
             }
-            UriBuilder url = SpecificationModel.GetUriSelectedCamera(cameraVM.Model);
-            //string url = "http://200.33.20.122:2007/axis-cgi/mjpg/video.cgi";
 
-            _stream = new MjpegStreamDecoder();
-            _stream.RaiseFrameCompleteEvent += HandleFrameRecieved;
+            UriBuilder url = SpecificationModel.GetUriSelectedCamera(cameraVM.Model);
 
             _cts = new CancellationTokenSource();
             CancellationToken token = _cts.Token;
-
             
             try
             {
-                _stream.StartAsync(url.ToString(), token);
+                await _stream.StartAsync(url.ToString(), token);
             }
             catch (OperationCanceledException)
             {
-                //Console.WriteLine($"\n{nameof(OperationCanceledException)} thrown\n");
+                //TODO:
             }
-           
-            
-           
+            catch (IOException e)
+            {
+                ErrorNotify("Connection error");
+            }
+
         }
     
 
@@ -118,32 +130,33 @@ namespace MJPEGStreamPlayer.ViewModel
             OnPropertyChanged(nameof(Frame));
         }
 
-        public void HandleFrameRecieved(object sender, FrameRecievedEventArgs e)
+        private void HandleFrameRecieved(object sender, FrameRecievedEventArgs e)
         {
-            using (MemoryStream stream = new MemoryStream(e.Frame))
-            {
-                BitmapImage bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.StreamSource = stream;
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.EndInit();
-                bitmap.Freeze();
 
-                _bitmap = bitmap;
-            }
+            BitmapImage bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.StreamSource = e.FrameStream;
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            _bitmap = bitmap;
 
             OnPropertyChanged(nameof(Frame));
             
         }
-
-        public void TakeScreenshot()
+     
+        private void HandleStreamError(object sender, StreamFailedEventArgs e)
         {
-            //byte[] data = Convert from _bitmap;
-            //string filename = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm") + ".jpg";
-            //MjpegStreamDecoder.Dump(data, filename);
+            ErrorNotify("Connection error");
         }
 
-      
+        private void ErrorNotify(string userErrMsg)
+        {
+            ErrorMessage = userErrMsg;
+            Error = true;
+        }
+
 
     }
 

@@ -4,16 +4,44 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:MJPEGStreamPlayer.View"
-             mc:Ignorable="d"
+
+    mc:Ignorable="d"
              d:DesignHeight="500" d:DesignWidth="640">
 
+    <UserControl.Resources>
+        <!-- Error notification style -->
+        <Style x:Key="errorMessageStyle" TargetType="TextBlock">
+            <Setter Property="Background" Value="#70FFFFFF" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#CCFFFFFF" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <BooleanToVisibilityConverter x:Key="boolToVis" />
+
+
+    </UserControl.Resources>
+  
 
     <StackPanel Orientation="Vertical" Margin="5" VerticalAlignment="Bottom">
-        <Image Source="{Binding Frame, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"/>
+        <Grid>
+            <Image Source="{Binding Frame, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"/>
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Visibility="{Binding Error,  Converter={StaticResource boolToVis}}"
+                       Style="{StaticResource errorMessageStyle}"/>
+        </Grid>
 
 
         <ComboBox Name="cameraBox"
                   SelectionChanged="cameraBox_SelectionChanged"
+                  SelectedIndex="0"
                   Height="25"
                   HorizontalAlignment="Stretch"   
                   Margin="0, 0"   

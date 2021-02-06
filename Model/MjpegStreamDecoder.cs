@@ -6,75 +6,57 @@ using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
+using System.Net.Sockets;
+using System.Net;
 
 
 namespace MJPEGStreamPlayer.Model
 {
     /// <summary>
     /// Listen asynchronously server and parse HTTP a response retriving a jpeg.
-    /// IMPORTANT NOTE: See remarks.
     /// </summary>
     /// <remarks>
     /// This  implemetation a parsing algorithm sensitive to a default a character set.
     /// Multi encoding and decoding a buffer data employed by
     /// a string class methods purposed for retrieving HTTP  header fields.
-    /// Realized aproach is correct in .NET Framework 4.7.2
-    /// but failing on .NET 3.1 at same Microsoft workbench. 
-    /// Problem with a byte mangle that it not presented in UTF.
-    /// Suggested solving is  force .NET to interpret the textfile
-    /// as high-ANSI encoding, by telling it the codepage is 1252: 
-    /// use System.Text.Encoding.GetEncoding(1252) object 
-    /// in a stream read/write operation for encoding and decoding accordingly
+    /// .NET Core compatibility fixed.
     /// </remarks>
     class MjpegStreamDecoder
     {
+        private const string CHARSET = "ISO-8859-1";    // Code page 28591 a.k.a. Windows-28591
         private static int _instanceCounter = 0;
-        private string _streamName;
 
-        private int _maxConnectionAttemptCounter = 10;
-        private int _attempt = 10;
-        private int _delay = 3000; // Delay in ms for connection
+        private int _delay = 3000;                      // Delay in ms for connection
+        private bool _isConnected;                      // Partition a response header
 
-        private ulong _recievedBytes = 0;
         private DateTime _startTime;
 
-        private uint _counter = 0;
-        private int _chunkMaxSize;      // Buffer size
-        private int _frameLength = 0; // A field header Content-Length
-        private string _boundary; // From a frame header Content-Type: multipart/x-mixed-replace;boundary=<key>
-        private bool _isConnected = false; // Partition a response header
+        private uint _counter;                          // Frame amount
+
+        private int _contentLength;                     // Size of field header Content-Length
+        private string _boundary;                       // From a frame header Content-Type: multipart/x-mixed-replace;boundary=<key>
+
+        private int _streamBufferMaxSize;               // Buffer size
         private byte[] _streamBuffer;
-        private byte[] _headerBuffer;
         private int _streamLength;
 
+        private byte[] _headerBuffer;
+
+        private int _frameBufferMaxSize;
         private byte[] _frameBuffer;
-        private int _frameCurrentLength = 0 ;
-        private int _frameBufferSize = 1024 * 1024;
+        private int _frameLength;
 
-        //TODO: Implement a frame buffer as byte[] to best performance
-        private List<byte> _frame = new List<byte> { };  // Cached image
-
-        public event EventHandler<FrameRecievedEventArgs> RaiseFrameCompleteEvent;
+        #region Network
 
         public bool Active { get { return _isConnected; } set { _isConnected = value; } }
-        public int Attempt
-        {
-            get
-            {
-                if (_attempt == 0)
-                    _attempt = _maxConnectionAttemptCounter;
-                return _attempt--;
-            }
-            set
-            {
-                _maxConnectionAttemptCounter = value;
-                _attempt = _maxConnectionAttemptCounter;
-            }
-        }
 
         public int Delay { get; set; }
 
-        public ulong RecievedBytes { get { return _recievedBytes; } }
+
+        #endregion Network
+
+        #region Statistics
+
 
         //TODO: Best calculation of average FPS
         public ushort AverageFps
@@ -93,37 +75,48 @@ namespace MJPEGStreamPlayer.Model
         /// <summary>
         /// Total a frames treated
         /// </summary>
-        public uint Total
-        {
-            get { return _counter; }
-        }
+        public uint Total { get { return _counter; } }
+
+        #endregion Statistics
+
+        #region Events
+
+        public event EventHandler<FrameRecievedEventArgs> RaiseFrameCompleteEvent;
+        public event EventHandler<StreamFailedEventArgs> RaiseStreamFailedEvent;
+
+
+        #endregion Events
+
+        #region Constructors
 
         public MjpegStreamDecoder(int bufferSize = 1024)
         {
-            _streamName = $"{_instanceCounter}";
             _instanceCounter++;
             _startTime = DateTime.Now;
-            _chunkMaxSize = bufferSize;
-            _headerBuffer = new byte[0];
-            _streamBuffer = new byte[_chunkMaxSize];
-
+            _streamBufferMaxSize = bufferSize;
+            _streamBuffer = new byte[_streamBufferMaxSize];
+            _headerBuffer = null;
+            _isConnected = false;
             AllocateFrameBufferMemory();
 
         }
+
+        #endregion Constructors
+
+        #region StartAsync
 
         /// <summary>
         /// Find a boundary in a header field and save a stream chunk byte to a frame buffer.
         /// At a frame complete raise an event with added handlers
         /// </summary>
         /// <param name="url">URL of the http stream</param>
-        /// <param name="token">Cancellation token used to cancel listen server</param>
+        /// <param name="token">Cancel listen server</param>
         /// <returns></returns>
         public async Task StartAsync(string url, CancellationToken? token = null)
         {
             var tok = token ?? CancellationToken.None;
             tok.ThrowIfCancellationRequested();
 
-            //TODO: Detailed exception handling
             try
             {
                 using (HttpClient client = new HttpClient())
@@ -132,29 +125,34 @@ namespace MJPEGStreamPlayer.Model
                     {
                         while (true)
                         {
-                            _streamLength = await stream.ReadAsync(_streamBuffer, 0, _chunkMaxSize, tok).ConfigureAwait(false);
+                            _streamLength = await stream.ReadAsync(_streamBuffer, 0,
+                                                                   _streamBufferMaxSize, tok
+                                                                  ).ConfigureAwait(false);
                             ParseStreamBuffer();
                         };
                     }
                 }
             }
+            catch(IOException e)
+            {
+                //RaiseStreamFailedEvent?.Invoke(this, new StreamFailedEventArgs(e.Message));
+                throw e;
+            }
             catch (HttpRequestException e)
             {
-                //TODO: Subcribe crash event handler
+                
             }
             finally
             {
-                // Retry connection
+                // Retry connection or user change another camera
                 //Task.Delay(Delay).ContinueWith(t => StartAsync(url));
             }
 
-
         }
 
-        private void AllocateFrameBufferMemory()
-        {
-            _frameBuffer = new byte[_frameBufferSize];
-        }
+        #endregion StartAsync
+
+        #region Parsing routine
 
         /// <summary>
         /// From buffer parse a response header and crop to proceed a multipart data
@@ -168,99 +166,95 @@ namespace MJPEGStreamPlayer.Model
         /// </remarks>
         private void ParseStreamBuffer()
         {
-            // NOTE: Additional memory allocation. 
-            // Pros is exclude overwriting buffer generating artifacted image. 
-            // Cons is a expansive memory using.
-            // A small a stream buffer improve performance
-            byte[] chunk = new byte[_streamLength];
-            Array.Copy(_streamBuffer, 0, chunk, 0, _streamLength);
+            // Meaning is shrink range of index a stream buffer 
+            // that avoided allocating additional memory. 
+            // If variables offset and streamLength is match
+            // there stream buffer array has entire proceed. 
+            int offset = 0;
 
             if (!_isConnected)
-                GetBoundary(chunk);
+                GetBoundary(_streamBuffer);
 
-            if (isEmptyHeaderBuffer())
-                FindJpeg(chunk);
-            else
+            if (!isEmptyHeaderBuffer())
             {
                 // Case a frame header corrupt. Prepend odd chunk
-                // Prevent a frame drop. Bottleneck place again.
-                byte[] enhancedBuffer = Combine(_headerBuffer, chunk);
+                // Prevent a frame drop. Bottleneck place.
+
+                byte[] enhancedBuffer = Combine(_headerBuffer, _streamBuffer);
+                _streamBuffer = enhancedBuffer;
+                _streamLength = enhancedBuffer.Length;
+
                 // Empty a header buffer to avoid infinite attempt
                 // to parsing already processed data item
                 EmptyHeaderBuffer();
-                FindJpeg(enhancedBuffer);
             }
-
+            ShrinkIndexRange(offset);
         }
+
         /// <summary>
-        /// Differ a header segment with jpeg part. Divide and conquer idea.
+        /// Differ a header segment with jpeg part. Divide and conquer concept.
         /// </summary>
-        /// <param name="data">Buffered data</param>
-        private void FindJpeg(byte[] data)
+        /// <param name="offset">Determine start index in range not already parsed stream buffer bytes</param>
+        private void ShrinkIndexRange(int offset)
         {
-            if (data.Length == 0)
+            if (offset == _streamLength)
             {
                 EmptyHeaderBuffer();
                 return;
             }
 
-            if (_frameLength == 0)  // Examine if we have to go to next a frame
+            if (_contentLength == 0)          // Ready to init a new frame
             {
-                if (IsHeaderFull(data))
+                // Need a array for string methods is core this app
+                byte[] chunk = new byte[_streamLength - offset];
+                Array.Copy(_streamBuffer, offset, chunk, 0, chunk.Length);
+
+                if (IsHeaderFull(chunk))
                 {
                     EmptyHeaderBuffer();
-                    HeaderParse(data);      // At now we know size of image
-                    (byte[] header, byte[] remains) = GetHeaderAndRemains(data);
-                    FindJpeg(remains);
+                    HeaderParse(chunk);      // At now we know size of image
+                    (byte[] header, byte[] remains) = GetHeaderAndRemains(chunk);
+                    offset = _streamLength - remains.Length;
+                    ShrinkIndexRange(offset);
                 }
                 else
                     // Header is fragmented
                     // Join a fragmented header and new data read from stream
                     // Return to ParseStreamBuffer
                     return;
-
-
             }
             else
             {
                 // Inside raw JPEG
-                int remainingBytes = _frameLength - _frame.Count;
-                //int remainingBytes = _frameLength - _frameCurrentLength;
-                int byteCounter = 0;
+                int remainsStreamBufBytes = _streamLength - offset;
+                int remainsFrameBytes = _contentLength - _frameLength;
+                int i = 0;
 
-                
-                while (byteCounter < data.Length && byteCounter < remainingBytes)
-                    _frame.Add(data[byteCounter++]);
-                
-
-                /*
-                while (byteCounter < data.Length && byteCounter < remainingBytes)
+                while (i < remainsStreamBufBytes && i < remainsFrameBytes)
                 {
-                    _frameBuffer[_frameCurrentLength + byteCounter] = data[byteCounter];
-                    byteCounter++;
+                    _frameBuffer[_frameLength++] = _streamBuffer[offset++];
+                    i++;
                 }
-                */
 
-                
-                if (_frame.Count == _frameLength)
+                if (_frameLength == _contentLength)
                     OnFrameCompleted();
-                
 
-                /*
-                if (_frameCurrentLength == _frameLength)
-                    OnFrameCompleted();
-                */
-
-                // If something left in a buffer
-                // Reduce data and proceed
-                byte[] reducedData = new byte[data.Length - byteCounter];
-                Array.Copy(data, byteCounter, reducedData, 0, reducedData.Length);
-                _headerBuffer = reducedData;    // Memorized if a header chopped
-                FindJpeg(reducedData);
+                // If something left in a buffer memorize it for extending a new streambuffer
+                remainsStreamBufBytes = _streamLength - offset;
+                if (remainsStreamBufBytes != 0)
+                {
+                    byte[] cache = new byte[remainsStreamBufBytes];
+                    Array.Copy(_streamBuffer, offset, cache, 0, cache.Length);
+                    _headerBuffer = cache;
+                }
+                ShrinkIndexRange(offset);
             }
 
-
         }
+
+        #endregion Parsing routine 
+
+        #region HTTP header parsing
 
         /// <summary>
         ///  Header is not fragmented
@@ -269,7 +263,7 @@ namespace MJPEGStreamPlayer.Model
         /// <returns></returns>
         private bool IsHeaderFull(byte[] data)
         {
-            string sData = Encoding.Default.GetString(data);
+            string sData = Encoding.GetEncoding(CHARSET).GetString(data);
             if (sData.Contains("--" + _boundary) && sData.Contains("\r\n\r\n"))
                 return true;
 
@@ -290,7 +284,7 @@ namespace MJPEGStreamPlayer.Model
             *
             *   %Binary JPEG%
             */
-            string sData = Encoding.Default.GetString(data);
+            string sData = Encoding.GetEncoding(CHARSET).GetString(data);
             string[] fields = sData.Split(new[] { "\r\n" }, StringSplitOptions.None);
 
             foreach (string field in fields)    // Helpfull data about frame
@@ -301,37 +295,44 @@ namespace MJPEGStreamPlayer.Model
 
                     try
                     {
-                        _frameLength = Int32.Parse(sSize);
+                        _contentLength = Int32.Parse(sSize);
                     }
                     catch (FormatException)
                     {
-                        //  TODO: Throw exception above
-                        Console.WriteLine("Input string is invalid.");
+                        //  TODO: Smthg
+                        // Malicious server response
                     }
                 }
             }
 
         }
 
+        /// <summary>
+        /// Get apart header and body of a response
+        /// </summary>
+        /// <param name="data">Array of buffered bytes</param>
+        /// <returns>header and body</returns>
         private (byte[], byte[]) GetHeaderAndRemains(byte[] data)
         {
-            string sData = Encoding.Default.GetString(data);
+            string sData = Encoding.GetEncoding(CHARSET).GetString(data);
             string[] sDataParts = sData.Split(new[] { "\r\n\r\n" }, 2, StringSplitOptions.None);
             if (sDataParts.Length == 2)
-                return (Encoding.Default.GetBytes(sDataParts[0]),
-                        Encoding.Default.GetBytes(sDataParts[1])); // JPEG binary part data
+                return (Encoding.GetEncoding(CHARSET).GetBytes(sDataParts[0]),
+                        Encoding.GetEncoding(CHARSET).GetBytes(sDataParts[1])); // JPEG binary part data
+
             else
-                return (Encoding.Default.GetBytes(sDataParts[0]),
+                return (Encoding.GetEncoding(CHARSET).GetBytes(sDataParts[0]),
                         new byte[0]); // Empty remaining data
         }
 
         /// <summary>
-        /// Parse a response header.Insure connection status 200. Reveal a boundary token
+        /// Parse a response header.
+        /// Insure connection status 200. Reveal a boundary token
         /// </summary>
         /// <param name="data">Array of buffered bytes</param>
         private void ResponseHeaderParse(byte[] data)
         {
-            string sHeader = Encoding.Default.GetString(data);
+            string sHeader = Encoding.GetEncoding(CHARSET).GetString(data);
             string[] headerFields = sHeader.Split(new[] { "\r\n" }, StringSplitOptions.None);
 
             foreach (string field in headerFields)
@@ -351,10 +352,10 @@ namespace MJPEGStreamPlayer.Model
         /// <summary>
         /// Parse for a boundary delimiter
         /// </summary>
-        /// <param name="data"></param>
+        /// <param name="data">Array of buffered bytes</param>
         private void GetBoundary(byte[] data)
         {
-            string sHeader = Encoding.Default.GetString(data);
+            string sHeader = Encoding.GetEncoding(CHARSET).GetString(data);
             string[] headerFields = sHeader.Split(new[] { "\r\n" }, StringSplitOptions.None);
 
             foreach (string field in headerFields)
@@ -370,12 +371,16 @@ namespace MJPEGStreamPlayer.Model
 
         }
 
+        #endregion HTTP header parsing
+
+        #region Utility
+
         /// <summary>
         /// Concatenate two arrays of bytes in new one
         /// </summary>
         /// <param name="first">First sequence of bytes</param>
         /// <param name="second">Second sequence of bytes</param>
-        /// <returns></returns>
+        /// <returns>New a byte array</returns>
         private byte[] Combine(byte[] first, byte[] second)
         {
             byte[] ret = new byte[first.Length + second.Length];
@@ -384,55 +389,61 @@ namespace MJPEGStreamPlayer.Model
             return ret;
         }
 
+        private void AllocateFrameBufferMemory()
+        {
+            //TODO: Suggest heuristic or deterministic algorithm figure out max size frame buffer
+            _frameBufferMaxSize = _streamBufferMaxSize * _streamBufferMaxSize;
+            _frameBuffer = new byte[_frameBufferMaxSize];
+        }
+
         private void EmptyHeaderBuffer()
         {
-            _headerBuffer = new byte[0];
+            _headerBuffer = null;
         }
 
         private bool isEmptyHeaderBuffer()
         {
-            return _headerBuffer.Length == 0;
+            return _headerBuffer == null;
         }
+
+        #endregion Utility
+
+        #region Completed frame's methods
 
         /// <summary>
         /// Event raise and reset parameters 
         /// </summary>
         private void OnFrameCompleted()
         {
-            byte[] f = _frame.ToArray();
-            //byte[] f = new byte[_frameCurrentLength];
-            //Array.Copy(_frameBuffer, 0, f, 0, f.Length);
+            // MemoryStream implements the IDisposable interface,
+            // but does not actually have any resources to dispose. 
+            // directly calling Dispose() is not necessary as MSDN told.
+            var s = new MemoryStream(_frameBuffer, 0, _frameLength);
 
+            RaiseFrameCompleteEvent?.Invoke(this, new FrameRecievedEventArgs(s));
 
-            RaiseFrameCompleteEvent?.Invoke(this, new FrameRecievedEventArgs(f));
-
-            _frame.Clear();
-
-            _frameCurrentLength = 0;
-            _counter++;
             _frameLength = 0;
+            _contentLength = 0;
+
+            _counter++;
 
         }
-               
 
         /// <summary>
-        /// Save image on disk
+        /// Save on disk
         /// </summary>
-        /// <param name="buffer">Byte array of image</param>
-        /// <param name="fileName">New a file name</param>
-        /// <param name="folderName">Directory</param>
-        public static void Dump(byte[] buffer, string fullName)
+        /// <param name="stream">Stream data to save</param>
+        /// <param name="fullName">New a full filename</param>
+        public static void Dump(MemoryStream stream, string fullName)
         {
-            using (FileStream stream = File.Open(fullName, FileMode.Create))
+            using (FileStream output = File.Open(fullName, FileMode.Create))
             {
-                using (BinaryWriter binWriter = new BinaryWriter(stream, Encoding.Default))
-                {
-                    binWriter.Write(buffer);
-                }
+                stream.CopyTo(output);
             }
 
         }
 
+        #endregion Completed frame's methods
 
     }
 

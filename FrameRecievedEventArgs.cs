@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,11 +12,11 @@ namespace MJPEGStreamPlayer
     /// </summary>
     public class FrameRecievedEventArgs : EventArgs
     {
-        public FrameRecievedEventArgs(byte[] frame)
+        public FrameRecievedEventArgs(MemoryStream stream)
         {
-            Frame = frame;
+            FrameStream = stream;
         }
 
-        public byte[] Frame { get; }
+        public MemoryStream FrameStream { get; }
     }
 }

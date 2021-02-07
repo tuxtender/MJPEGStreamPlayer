@@ -58,6 +58,7 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Compile Include="FrameRecievedEventArgs.cs" />
+    <Compile Include="Model\BaseClient.cs" />
     <Compile Include="Model\Camera.cs" />
     <Compile Include="Model\MjpegStreamDecoder.cs" />
     <Compile Include="Model\SpecificationModel.cs" />
@@ -66,7 +67,6 @@
     <Compile Include="ViewModel\MainWindowViewModel.cs" />
     <Compile Include="ViewModel\NotifyPropertyChangedBase.cs" />
     <Compile Include="ViewModel\SingleFrameViewModel.cs" />
-    <Compile Include="ViewModel\SpecificationViewModel.cs" />
     <Compile Include="View\SingleFrameView.xaml.cs">
       <DependentUpon>SingleFrameView.xaml</DependentUpon>
     </Compile>

@@ -29,7 +29,7 @@ namespace MJPEGStreamPlayer.ViewModel
         }
 
         /// <summary>
-        /// Prepare a cameras id and location. Wrapping a model items 
+        /// Request data about cameras and add them as soon as possible
         /// </summary>
         private async Task InitSpecificationModelAsync()
         {
@@ -39,21 +39,22 @@ namespace MJPEGStreamPlayer.ViewModel
                 _specModel.InitCameras();
 
                 foreach (Camera c in _specModel.Cameras)
+                {
                     Cell0.Cameras.Add(new CameraViewModel(c));
+                    Cell1.Cameras.Add(new CameraViewModel(c));
+                    Cell2.Cameras.Add(new CameraViewModel(c));
+                    Cell3.Cameras.Add(new CameraViewModel(c));
+                }
+
             }
             catch(InvalidOperationException e)
             {
                 Cell0.ErrorMessage = e.Message;
                 System.Diagnostics.Debug.WriteLine(e.Message);
-
             }
 
 
         }
-
-
-
-
 
 
     }

@@ -67,7 +67,7 @@ namespace MJPEGStreamPlayer.Model
         {
             XmlDocument doc = new XmlDocument();
 
-            //TODO: Create a HttpClient instance using HttpClientFactory
+            //TODO: Create a HttpClient instance using HttpClientFactory or Typed HttpClient objects
             // to no spawned a new socket instance
             using (HttpClient client = new HttpClient())
             {

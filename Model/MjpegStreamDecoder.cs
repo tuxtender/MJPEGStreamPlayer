@@ -26,7 +26,9 @@ namespace MJPEGStreamPlayer.Model
         private const string CHARSET = "ISO-8859-1";    // Code page 28591 a.k.a. Windows-28591
         private static int _instanceCounter = 0;
 
-        private int _delay = 3000;                      // Delay in ms for connection
+        private readonly int _maxAttempt;
+        private int _attempt;                           // Retry connections
+        private readonly int _delay;                    // Delay in ms for connection
         private bool _isConnected;                      // Partition a response header
 
         private DateTime _startTime;
@@ -36,7 +38,7 @@ namespace MJPEGStreamPlayer.Model
         private int _contentLength;                     // Size of field header Content-Length
         private string _boundary;                       // From a frame header Content-Type: multipart/x-mixed-replace;boundary=<key>
 
-        private int _streamBufferMaxSize;               // Buffer size
+        private readonly int _streamBufferMaxSize;               
         private byte[] _streamBuffer;
         private int _streamLength;
 
@@ -48,17 +50,12 @@ namespace MJPEGStreamPlayer.Model
 
         #region Network
 
-        public bool Active { get { return _isConnected; } set { _isConnected = value; } }
-
-        public int Delay { get; set; }
-
+        public bool Active { get { return _isConnected; } }
 
         #endregion Network
 
         #region Statistics
 
-
-        //TODO: Best calculation of average FPS
         public ushort AverageFps
         {
             get { return (ushort)(_counter / (DateTime.Now - _startTime).TotalSeconds); }
@@ -83,13 +80,19 @@ namespace MJPEGStreamPlayer.Model
 
         public event EventHandler<FrameRecievedEventArgs> RaiseFrameCompleteEvent;
         public event EventHandler<StreamFailedEventArgs> RaiseStreamFailedEvent;
-
+        public event EventHandler RaiseStreamStartEvent;
 
         #endregion Events
 
         #region Constructors
 
-        public MjpegStreamDecoder(int bufferSize = 1024)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="bufferSize">Max stream buffer size</param>
+        /// <param name="reconnect">Count of try reconnect</param>
+        /// <param name="delay">Delay reconnection in ms</param>
+        public MjpegStreamDecoder(int bufferSize = 1024, int reconnect = 10, int delay = 5000)
         {
             _instanceCounter++;
             _startTime = DateTime.Now;
@@ -97,6 +100,10 @@ namespace MJPEGStreamPlayer.Model
             _streamBuffer = new byte[_streamBufferMaxSize];
             _headerBuffer = null;
             _isConnected = false;
+            _delay = delay;
+            _maxAttempt = reconnect;
+            _attempt = _maxAttempt;
+
             AllocateFrameBufferMemory();
 
         }
@@ -115,7 +122,7 @@ namespace MJPEGStreamPlayer.Model
         public async Task StartAsync(string url, CancellationToken? token = null)
         {
             var tok = token ?? CancellationToken.None;
-            tok.ThrowIfCancellationRequested();
+            tok.ThrowIfCancellationRequested();         // User request stop stream
 
             try
             {
@@ -133,19 +140,48 @@ namespace MJPEGStreamPlayer.Model
                     }
                 }
             }
-            catch(IOException e)
+            catch (ArgumentNullException e)
             {
-                //RaiseStreamFailedEvent?.Invoke(this, new StreamFailedEventArgs(e.Message));
-                throw e;
+                // The requestUri is null. Only .NET 5.0
+                string msg = "Failed: " + e.Message;
+                RaiseStreamFailedEvent?.Invoke(this, new StreamFailedEventArgs(msg));
+                System.Diagnostics.Debug.WriteLine(msg);
+            }
+            catch (InvalidOperationException e)
+            {
+                // The requestUri must be an absolute URI or BaseAddress must be set.
+                string msg = "Failed: " + e.Message;
+                RaiseStreamFailedEvent?.Invoke(this, new StreamFailedEventArgs(msg));
+                System.Diagnostics.Debug.WriteLine(msg);
             }
             catch (HttpRequestException e)
             {
-                
+                // The request failed due to an underlying issue such as network connectivity,
+                // DNS failure, server certificate validation or timeout (only .NET Framework)
+                string msg = "Failed: " + e.Message;
+                RaiseStreamFailedEvent?.Invoke(this, new StreamFailedEventArgs(msg));
+                System.Diagnostics.Debug.WriteLine(msg);
+            }
+            catch (IOException e)
+            {
+                // Stream reading error
+                string msg = "Failed: " + e.Message;
+                RaiseStreamFailedEvent?.Invoke(this, new StreamFailedEventArgs(msg));
+                System.Diagnostics.Debug.WriteLine(msg);
             }
             finally
             {
-                // Retry connection or user change another camera
-                //Task.Delay(Delay).ContinueWith(t => StartAsync(url));
+       
+            }
+
+            // Retry connection
+            await Task.Delay(_delay);
+            System.Diagnostics.Debug.WriteLine("Trying reconnect.");
+
+            if (_attempt > 0)
+            {
+                _attempt--;
+                await StartAsync(url, token).ConfigureAwait(false);
             }
 
         }
@@ -155,7 +191,7 @@ namespace MJPEGStreamPlayer.Model
         #region Parsing routine
 
         /// <summary>
-        /// From buffer parse a response header and crop to proceed a multipart data
+        /// Fill frame buffer
         /// </summary>
         /// <remarks>
         /// In situation of poorly connection the early started
@@ -168,12 +204,16 @@ namespace MJPEGStreamPlayer.Model
         {
             // Meaning is shrink range of index a stream buffer 
             // that avoided allocating additional memory. 
-            // If variables offset and streamLength is match
+            // If a current start index and stream length is match
             // there stream buffer array has entire proceed. 
-            int offset = 0;
+            int start = 0;
 
             if (!_isConnected)
+            {
+                _attempt = _maxAttempt;
+                RaiseStreamStartEvent?.Invoke(this, new EventArgs());
                 GetBoundary(_streamBuffer);
+            }
 
             if (!isEmptyHeaderBuffer())
             {
@@ -188,16 +228,18 @@ namespace MJPEGStreamPlayer.Model
                 // to parsing already processed data item
                 EmptyHeaderBuffer();
             }
-            ShrinkIndexRange(offset);
+
+            ParseStreamBufferFromIndex(start);
+
         }
 
         /// <summary>
-        /// Differ a header segment with jpeg part. Divide and conquer concept.
+        /// Process a stream buffer from a given index until the end.
         /// </summary>
-        /// <param name="offset">Determine start index in range not already parsed stream buffer bytes</param>
-        private void ShrinkIndexRange(int offset)
+        /// <param name="index">Determine start index not already parsed stream buffer bytes</param>
+        private void ParseStreamBufferFromIndex(int index)
         {
-            if (offset == _streamLength)
+            if (index == _streamLength)
             {
                 EmptyHeaderBuffer();
                 return;
@@ -206,16 +248,16 @@ namespace MJPEGStreamPlayer.Model
             if (_contentLength == 0)          // Ready to init a new frame
             {
                 // Need a array for string methods is core this app
-                byte[] chunk = new byte[_streamLength - offset];
-                Array.Copy(_streamBuffer, offset, chunk, 0, chunk.Length);
+                byte[] chunk = new byte[_streamLength - index];
+                Array.Copy(_streamBuffer, index, chunk, 0, chunk.Length);
 
                 if (IsHeaderFull(chunk))
                 {
                     EmptyHeaderBuffer();
                     HeaderParse(chunk);      // At now we know size of image
                     (byte[] header, byte[] remains) = GetHeaderAndRemains(chunk);
-                    offset = _streamLength - remains.Length;
-                    ShrinkIndexRange(offset);
+                    index = _streamLength - remains.Length;
+                    ParseStreamBufferFromIndex(index);
                 }
                 else
                     // Header is fragmented
@@ -226,13 +268,13 @@ namespace MJPEGStreamPlayer.Model
             else
             {
                 // Inside raw JPEG
-                int remainsStreamBufBytes = _streamLength - offset;
+                int remainsStreamBufBytes = _streamLength - index;
                 int remainsFrameBytes = _contentLength - _frameLength;
                 int i = 0;
 
                 while (i < remainsStreamBufBytes && i < remainsFrameBytes)
                 {
-                    _frameBuffer[_frameLength++] = _streamBuffer[offset++];
+                    _frameBuffer[_frameLength++] = _streamBuffer[index++];
                     i++;
                 }
 
@@ -240,14 +282,14 @@ namespace MJPEGStreamPlayer.Model
                     OnFrameCompleted();
 
                 // If something left in a buffer memorize it for extending a new streambuffer
-                remainsStreamBufBytes = _streamLength - offset;
+                remainsStreamBufBytes = _streamLength - index;
                 if (remainsStreamBufBytes != 0)
                 {
                     byte[] cache = new byte[remainsStreamBufBytes];
-                    Array.Copy(_streamBuffer, offset, cache, 0, cache.Length);
+                    Array.Copy(_streamBuffer, index, cache, 0, cache.Length);
                     _headerBuffer = cache;
                 }
-                ShrinkIndexRange(offset);
+                ParseStreamBufferFromIndex(index);
             }
 
         }
@@ -389,6 +431,9 @@ namespace MJPEGStreamPlayer.Model
             return ret;
         }
 
+        /// <summary>
+        /// Estimate max size frame buffer
+        /// </summary>
         private void AllocateFrameBufferMemory()
         {
             //TODO: Suggest heuristic or deterministic algorithm figure out max size frame buffer

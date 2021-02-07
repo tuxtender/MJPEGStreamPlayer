@@ -20,6 +20,8 @@ namespace MJPEGStreamPlayer.ViewModel
     class SingleFrameViewModel : NotifyPropertyChangedBase
     {
         private bool _isError;
+        private string _errorMessage;
+
         private MjpegStreamDecoder _stream;
         private SpecificationModel _specModel;
         private ObservableCollection<CameraViewModel> _cameras;
@@ -34,11 +36,18 @@ namespace MJPEGStreamPlayer.ViewModel
             private set 
             {
                 _isError = value;
-                OnPropertyChanged(nameof(ErrorMessage));
                 OnPropertyChanged(nameof(Error));
             }
         }
-        public string ErrorMessage { get; private set; }
+        public string ErrorMessage 
+        {
+            get { return _errorMessage; }
+            private set
+            {
+                _errorMessage = value;
+                OnPropertyChanged(nameof(ErrorMessage));
+            }
+        }
        
 
         public SingleFrameViewModel()
@@ -53,7 +62,8 @@ namespace MJPEGStreamPlayer.ViewModel
 
             _stream = new MjpegStreamDecoder();
             _stream.RaiseFrameCompleteEvent += HandleFrameRecieved;
-            //_stream.RaiseStreamFailedEvent += HandleStreamError;
+            _stream.RaiseStreamFailedEvent += HandleStreamError;
+            _stream.RaiseStreamStartEvent += HandleStreamStart;
 
             _cts = new CancellationTokenSource();
 
@@ -84,6 +94,7 @@ namespace MJPEGStreamPlayer.ViewModel
         {
             _cts.Cancel();
             Error = false;
+            _cts = new CancellationTokenSource();
         }
 
         public async void ChangeCamera(CameraViewModel cameraVM)
@@ -97,8 +108,7 @@ namespace MJPEGStreamPlayer.ViewModel
             }
 
             UriBuilder url = SpecificationModel.GetUriSelectedCamera(cameraVM.Model);
-
-            _cts = new CancellationTokenSource();
+            
             CancellationToken token = _cts.Token;
             
             try
@@ -107,15 +117,13 @@ namespace MJPEGStreamPlayer.ViewModel
             }
             catch (OperationCanceledException)
             {
-                //TODO:
-            }
-            catch (IOException e)
-            {
-                ErrorNotify("Connection error");
+                // Stream ended no error
+                System.Diagnostics.Debug.WriteLine("User cancel stream");
             }
 
         }
-    
+
+        #region Idle screen
 
         private void SetStartScreen()
         {
@@ -129,6 +137,10 @@ namespace MJPEGStreamPlayer.ViewModel
 
             OnPropertyChanged(nameof(Frame));
         }
+
+        #endregion Idle screen
+
+        #region Event handler
 
         private void HandleFrameRecieved(object sender, FrameRecievedEventArgs e)
         {
@@ -148,15 +160,16 @@ namespace MJPEGStreamPlayer.ViewModel
      
         private void HandleStreamError(object sender, StreamFailedEventArgs e)
         {
-            ErrorNotify("Connection error");
-        }
-
-        private void ErrorNotify(string userErrMsg)
-        {
-            ErrorMessage = userErrMsg;
+            ErrorMessage = e.Error;
             Error = true;
         }
 
+        private void HandleStreamStart(object sender, EventArgs e)
+        {
+            Error = false;
+        }
+
+        #endregion Event handler
 
     }
 

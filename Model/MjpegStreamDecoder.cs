@@ -130,6 +130,10 @@ namespace MJPEGStreamPlayer.Model
                 {
                     using (Stream stream = await client.GetStreamAsync(url).ConfigureAwait(false))
                     {
+                        
+                        RaiseStreamStartEvent?.Invoke(this, new EventArgs());
+                        _attempt = _maxAttempt;             // Reset reconnect count
+
                         while (true)
                         {
                             _streamLength = await stream.ReadAsync(_streamBuffer, 0,
@@ -137,6 +141,9 @@ namespace MJPEGStreamPlayer.Model
                                                                   ).ConfigureAwait(false);
                             ParseStreamBuffer();
                         };
+
+                        
+
                     }
                 }
             }
@@ -171,7 +178,7 @@ namespace MJPEGStreamPlayer.Model
             }
             finally
             {
-       
+                
             }
 
             // Retry connection
@@ -209,11 +216,8 @@ namespace MJPEGStreamPlayer.Model
             int start = 0;
 
             if (!_isConnected)
-            {
-                _attempt = _maxAttempt;
-                RaiseStreamStartEvent?.Invoke(this, new EventArgs());
                 GetBoundary(_streamBuffer);
-            }
+            
 
             if (!isEmptyHeaderBuffer())
             {

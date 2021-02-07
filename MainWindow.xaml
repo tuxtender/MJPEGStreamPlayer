@@ -7,33 +7,31 @@
         xmlns:uc="clr-namespace:MJPEGStreamPlayer.View"
         xmlns:vm="clr-namespace:MJPEGStreamPlayer.ViewModel"
         mc:Ignorable="d"
-        Title="MJPEGStreamPlayer" Height="540" Width="640">
+        Title="{Binding Header}" Height="540" Width="640">
 
     <Window.DataContext>
         <vm:MainWindowViewModel/>
     </Window.DataContext>
-    
-   
-    <Grid>
+  
 
-        <Grid Margin="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
+    <Grid Margin="0">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
 
-            <uc:SingleFrameView DataContext="{Binding Cell0}" Grid.Row="0" Grid.Column="0"/>
-            <uc:SingleFrameView DataContext="{Binding Cell1}" Grid.Row="0" Grid.Column="1"/>
-            <uc:SingleFrameView DataContext="{Binding Cell2}" Grid.Row="1" Grid.Column="0"/>
-            <uc:SingleFrameView DataContext="{Binding Cell3}" Grid.Row="1" Grid.Column="1"/>
+        <uc:SingleFrameView DataContext="{Binding Cell0}" Grid.Row="0" Grid.Column="0"/>
+        <uc:SingleFrameView DataContext="{Binding Cell1}" Grid.Row="0" Grid.Column="1"/>
+        <uc:SingleFrameView DataContext="{Binding Cell2}" Grid.Row="1" Grid.Column="0"/>
+        <uc:SingleFrameView DataContext="{Binding Cell3}" Grid.Row="1" Grid.Column="1"/>
 
-        </Grid>
+
     </Grid>
-    
+
    
 
 </Window>

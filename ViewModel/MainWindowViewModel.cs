@@ -11,7 +11,18 @@ namespace MJPEGStreamPlayer.ViewModel
     class MainWindowViewModel : NotifyPropertyChangedBase
     {
         private SpecificationModel _specModel;
+        private string _header;
        
+        public string Header
+        {
+            get { return _header; }
+            private set
+            {
+                _header = value;
+                OnPropertyChanged(nameof(Header));
+            }
+        }
+
         public SingleFrameViewModel Cell0 { get; set; }
         public SingleFrameViewModel Cell1 { get; set; }
         public SingleFrameViewModel Cell2 { get; set; }
@@ -19,6 +30,8 @@ namespace MJPEGStreamPlayer.ViewModel
 
         public MainWindowViewModel()
         {
+            Header = "MJPEGStreamPlayer";
+
             Cell0 = new SingleFrameViewModel();
             Cell1 = new SingleFrameViewModel();
             Cell2 = new SingleFrameViewModel();
@@ -49,13 +62,14 @@ namespace MJPEGStreamPlayer.ViewModel
             }
             catch(InvalidOperationException e)
             {
-                Cell0.ErrorMessage = e.Message;
+                Header = e.Message;
                 System.Diagnostics.Debug.WriteLine(e.Message);
             }
-
 
         }
 
 
     }
+
+
 }

@@ -58,7 +58,6 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Compile Include="FrameRecievedEventArgs.cs" />
-    <Compile Include="Model\BaseClient.cs" />
     <Compile Include="Model\Camera.cs" />
     <Compile Include="Model\MjpegStreamDecoder.cs" />
     <Compile Include="Model\SpecificationModel.cs" />

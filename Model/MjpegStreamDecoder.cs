@@ -126,6 +126,8 @@ namespace MJPEGStreamPlayer.Model
 
             try
             {
+                //TODO: Create a HttpClient instance using HttpClientFactory or Typed HttpClient objects
+                // to no spawned a new socket instance
                 using (HttpClient client = new HttpClient())
                 {
                     using (Stream stream = await client.GetStreamAsync(url).ConfigureAwait(false))
@@ -141,8 +143,6 @@ namespace MJPEGStreamPlayer.Model
                                                                   ).ConfigureAwait(false);
                             ParseStreamBuffer();
                         };
-
-                        
 
                     }
                 }

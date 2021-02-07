@@ -9,6 +9,7 @@ MJPEGStreamPlayer is online MJPEG player. Based on class MjpegStreamDecoder for 
 
 Caveats
 -------
+* Bad practice of using HTTPClient cause exhaust the number of sockets. It's only fit to single video stream.
 * Rude and not sophisticated UI/UX design.
 
 

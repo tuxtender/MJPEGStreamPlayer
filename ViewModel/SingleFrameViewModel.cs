@@ -23,12 +23,12 @@ namespace MJPEGStreamPlayer.ViewModel
         private string _errorMessage;
 
         private MjpegStreamDecoder _stream;
-        private SpecificationModel _specModel;
         private ObservableCollection<CameraViewModel> _cameras;
         private BitmapImage _bitmap;
         private CancellationTokenSource _cts;
 
-        public ObservableCollection<CameraViewModel> Cameras { get; set; }
+        #region Property
+        public ObservableCollection<CameraViewModel> Cameras { get; private set; }
         public BitmapImage Frame { get { return _bitmap; } }
         public bool Error 
         {
@@ -37,52 +37,42 @@ namespace MJPEGStreamPlayer.ViewModel
             {
                 _isError = value;
                 OnPropertyChanged(nameof(Error));
-            }
+            } 
         }
         public string ErrorMessage 
         {
             get { return _errorMessage; }
-            private set
+            set
             {
                 _errorMessage = value;
+                Error = true;
                 OnPropertyChanged(nameof(ErrorMessage));
             }
         }
-       
+
+        #endregion Property
+
+        #region Constructors
 
         public SingleFrameViewModel()
         {
-            const string url = "http://demo.macroscop.com:8080/mobile?login=root&channelid=2016897c-8be5-4a80-b1a3-7f79a9ec729c&resolutionX=640&resolutionY=480&fps=25";
             _cameras = new ObservableCollection<CameraViewModel>();
-
+            Error = false;
             SetStartScreen();
             MakeDummyItem();
-
-            InitSpecificationModelAsync();
+            _cts = new CancellationTokenSource();           // Intentional interruption
 
             _stream = new MjpegStreamDecoder();
             _stream.RaiseFrameCompleteEvent += HandleFrameRecieved;
             _stream.RaiseStreamFailedEvent += HandleStreamError;
             _stream.RaiseStreamStartEvent += HandleStreamStart;
 
-            _cts = new CancellationTokenSource();
-
-            _isError = false;
-
         }
 
-        /// <summary>
-        /// Prepare a cameras id and location. Wrapping a model items 
-        /// </summary>
-        private async Task InitSpecificationModelAsync()
-        {
-            _specModel = await SpecificationModel.CreateAsync();
-            _specModel.InitCameras();
-            foreach (Camera c in _specModel.Cameras)
-                _cameras.Add(new CameraViewModel(c));
+        #endregion Constructors
 
-        }
-
+        #region misc
+   
         private void MakeDummyItem(string text="None")
         {
             CameraViewModel empty = new CameraViewModel(new Camera(text, text));
@@ -97,6 +87,10 @@ namespace MJPEGStreamPlayer.ViewModel
             _cts = new CancellationTokenSource();
         }
 
+        #endregion misc
+
+        #region ChangeCamera
+
         public async void ChangeCamera(CameraViewModel cameraVM)
         {
             CloseStream();
@@ -107,13 +101,12 @@ namespace MJPEGStreamPlayer.ViewModel
                 return;
             }
 
-            UriBuilder url = SpecificationModel.GetUriSelectedCamera(cameraVM.Model);
-            
             CancellationToken token = _cts.Token;
+            string url = cameraVM.Url;
             
             try
             {
-                await _stream.StartAsync(url.ToString(), token);
+                await _stream.StartAsync(url, token);
             }
             catch (OperationCanceledException)
             {
@@ -122,6 +115,8 @@ namespace MJPEGStreamPlayer.ViewModel
             }
 
         }
+
+        #endregion ChangeCamera
 
         #region Idle screen
 
@@ -161,14 +156,13 @@ namespace MJPEGStreamPlayer.ViewModel
         private void HandleStreamError(object sender, StreamFailedEventArgs e)
         {
             ErrorMessage = e.Error;
-            Error = true;
         }
 
         private void HandleStreamStart(object sender, EventArgs e)
         {
             Error = false;
         }
-
+     
         #endregion Event handler
 
     }

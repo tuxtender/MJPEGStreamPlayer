@@ -66,6 +66,7 @@
     <Compile Include="ViewModel\MainWindowViewModel.cs" />
     <Compile Include="ViewModel\NotifyPropertyChangedBase.cs" />
     <Compile Include="ViewModel\SingleFrameViewModel.cs" />
+    <Compile Include="ViewModel\SpecificationViewModel.cs" />
     <Compile Include="View\SingleFrameView.xaml.cs">
       <DependentUpon>SingleFrameView.xaml</DependentUpon>
     </Compile>

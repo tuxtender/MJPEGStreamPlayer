@@ -21,6 +21,14 @@ namespace MJPEGStreamPlayer.ViewModel
         {
             get { return _camera.Id; }
         }
+
+        public string Url
+        {
+            get
+            {
+                return SpecificationModel.GetUriSelectedCamera(_camera).ToString(); 
+            }
+        }
         public CameraViewModel(Camera camera)
         {
             _camera = camera;

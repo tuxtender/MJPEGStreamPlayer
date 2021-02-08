@@ -19,7 +19,7 @@ Caveats
 
 ## Contributing
 
-Pull requests is appreciated.
+Pull requests are appreciated.
 
 ## Built With
 

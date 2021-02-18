@@ -12,6 +12,10 @@ Caveats
 * Bad practice of using HTTPClient cause exhaust the number of sockets. It's only fit to single video stream.
 * Rude and not sophisticated UI/UX design.
 
+Known issue
+-----------
+* The freeze occur at the archive list is filling by plenty items.
+
 
 ### Prerequisites
 
@@ -53,5 +57,5 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ## Acknowledgments
 * [MJPEG](https://en.wikipedia.org/wiki/Motion_JPEG)
 * [Захват видео с сетевых камер, часть 1](https://habr.com/ru/post/115808/)
-* [Asynchronous construction problem of class instance.](https://blog.stephencleary.com/2013/01/async-oop-2-constructors.html)
+* [Asynchronous construction problem of class instance](https://blog.stephencleary.com/2013/01/async-oop-2-constructors.html)
 * [MVVM Pattern](https://www.codeproject.com/Articles/278901/MVVM-Pattern-Made-Simple])

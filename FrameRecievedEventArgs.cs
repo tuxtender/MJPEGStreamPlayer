@@ -12,11 +12,16 @@ namespace MJPEGStreamPlayer
     /// </summary>
     public class FrameRecievedEventArgs : EventArgs
     {
-        public FrameRecievedEventArgs(MemoryStream stream)
+        public MemoryStream FrameStream { get; }
+        public string Timestamp { get; }
+        public FrameRecievedEventArgs(MemoryStream stream, string timestamp)
         {
             FrameStream = stream;
+            Timestamp = timestamp;
         }
 
-        public MemoryStream FrameStream { get; }
+
     }
+
+
 }

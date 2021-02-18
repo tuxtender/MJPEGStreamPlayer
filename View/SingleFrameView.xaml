@@ -4,9 +4,10 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:MJPEGStreamPlayer.View"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
 
              mc:Ignorable="d"
-             d:DesignHeight="500" d:DesignWidth="640"
+             d:DesignHeight="480" d:DesignWidth="640"
              >
 
     <UserControl.Resources>
@@ -29,18 +30,79 @@
 
 
     </UserControl.Resources>
-  
+
 
     <StackPanel Orientation="Vertical" Margin="5" VerticalAlignment="Bottom">
+
         <Grid>
-            <Image Source="{Binding Frame, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"/>
-            <TextBlock Text="{Binding ErrorMessage}"
-                       Visibility="{Binding Error,  Converter={StaticResource boolToVis}}"
-                       Style="{StaticResource errorMessageStyle}"/>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="1*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Column="0" Grid.Row="0" Margin="5">
+                <Image Source="{Binding Frame, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"/>
+                <TextBlock Text="{Binding ErrorMessage}"
+                           Visibility="{Binding Error,  Converter={StaticResource boolToVis}}"
+                           Style="{StaticResource errorMessageStyle}"/>
+                <TextBlock Text="{Binding Timestamp, UpdateSourceTrigger=PropertyChanged}" 
+                           Visibility="Visible"/>
+            </Grid>
+
+            <StackPanel Grid.Row="0" Grid.Column="1"
+                        Orientation="Vertical"
+                        Height="400">
+
+                <Label Content="Archive"
+                       />
+
+                <ListView Name="fragmentList"
+                      ItemsSource="{Binding Fragments, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"
+                      SelectionChanged="fragmentList_SelectionChanged"
+                      VerticalContentAlignment="Top"  
+                      ScrollViewer.VerticalScrollBarVisibility="Visible"
+                      ScrollViewer.CanContentScroll="False"
+                      Height="360"
+                      MaxWidth="500"
+                      >
+
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Path=FromTime}"/>
+                                <TextBlock Text=" - "/>
+                                <TextBlock Text="{Binding Path=ToTime}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+
+
+
+            </StackPanel>
+            
+         
+
         </Grid>
 
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
 
-        <ComboBox Name="cameraBox"
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="1*" />
+                <RowDefinition Height="1*" />
+
+            </Grid.RowDefinitions>
+
+
+            <ComboBox Name="cameraBox" Grid.Row="0" Grid.Column="0"
                   SelectionChanged="cameraBox_SelectionChanged"
                   SelectedIndex="0"
                   Height="25"
@@ -48,14 +110,46 @@
                   Margin="0, 0"   
                   VerticalAlignment="Center"
                   ItemsSource="{Binding Cameras, UpdateSourceTrigger=PropertyChanged}">
-            <ComboBox.ItemTemplate>
-                <DataTemplate>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Path=Name}"/>
-                    </StackPanel>
-                </DataTemplate>
-            </ComboBox.ItemTemplate>
-        </ComboBox>
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Path=Name}"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <Button Name="liveButton"
+                    Click="liveButton_Click"
+                    Content="Live"
+                    Grid.Column="1" 
+                    Grid.Row="0"/>
+
+            <Grid Grid.Row="1" Grid.Column="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="3*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBox Name="timeBox" Grid.Column="0" 
+                         Text="00:00:00"/>
+
+                <DatePicker Name="dateArchive" 
+                            Grid.Column="1"
+                            SelectedDate="{x:Static sys:DateTime.Now}"/>
+
+            </Grid>
+
+
+            <Button Name="archiveButton"
+                    Click="archiveButton_Click"
+                    Content="Archive"
+                    Grid.Column="1" 
+                    Grid.Row="1"/>
+
+        </Grid>
+
+
     </StackPanel>
 
 </UserControl>

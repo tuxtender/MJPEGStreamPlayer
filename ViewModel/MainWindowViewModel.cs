@@ -10,9 +10,11 @@ namespace MJPEGStreamPlayer.ViewModel
 {
     class MainWindowViewModel : NotifyPropertyChangedBase
     {
+        private const string TITLE = "MJPEGStreamPlayer";
         private SpecificationModel _specModel;
         private string _header;
-       
+        private string _url;
+
         public string Header
         {
             get { return _header; }
@@ -23,51 +25,53 @@ namespace MJPEGStreamPlayer.ViewModel
             }
         }
 
-        public SingleFrameViewModel Cell0 { get; set; }
-        public SingleFrameViewModel Cell1 { get; set; }
-        public SingleFrameViewModel Cell2 { get; set; }
-        public SingleFrameViewModel Cell3 { get; set; }
+        public string Url
+        {
+            get { return _url; }
+            set
+            {
+                _url = value;
+                OnPropertyChanged(nameof(Url));
+            }
+        }
+
+        public SingleFrameViewModel Cell { get; set; }
+     
 
         public MainWindowViewModel()
         {
-            Header = "MJPEGStreamPlayer";
-
-            Cell0 = new SingleFrameViewModel();
-            Cell1 = new SingleFrameViewModel();
-            Cell2 = new SingleFrameViewModel();
-            Cell3 = new SingleFrameViewModel();
-            
-            InitSpecificationModelAsync();
+            Header = TITLE;
+            Url = "http://demo.macroscop.com:8080";
+            Cell = new SingleFrameViewModel();
+            InitSpecificationModelAsync(Url);
 
         }
 
         /// <summary>
         /// Request data about cameras and add them as soon as possible
         /// </summary>
-        private async Task InitSpecificationModelAsync()
+        /// <param name="url">Streaming server url</param>
+        /// <returns></returns>
+        public async Task InitSpecificationModelAsync(string url)
         {
             try
             {
-                _specModel = await SpecificationModel.CreateAsync();
+                _specModel = await SpecificationModel.CreateAsync(url);
                 _specModel.InitCameras();
 
-                foreach (Camera c in _specModel.Cameras)
-                {
-                    Cell0.Cameras.Add(new CameraViewModel(c));
-                    Cell1.Cameras.Add(new CameraViewModel(c));
-                    Cell2.Cameras.Add(new CameraViewModel(c));
-                    Cell3.Cameras.Add(new CameraViewModel(c));
-                }
+                Cell.SetServer(_specModel);
+                Header = TITLE;
 
             }
             catch(InvalidOperationException e)
             {
                 Header = e.Message;
+                Cell.RemoveServer();
                 System.Diagnostics.Debug.WriteLine(e.Message);
             }
 
         }
-
+      
 
     }
 

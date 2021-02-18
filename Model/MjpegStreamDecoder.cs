@@ -37,6 +37,8 @@ namespace MJPEGStreamPlayer.Model
 
         private int _contentLength;                     // Size of field header Content-Length
         private string _boundary;                       // From a frame header Content-Type: multipart/x-mixed-replace;boundary=<key>
+        private string _timestamp;
+
 
         private readonly int _streamBufferMaxSize;               
         private byte[] _streamBuffer;
@@ -349,6 +351,24 @@ namespace MJPEGStreamPlayer.Model
                         // Malicious server response
                     }
                 }
+
+                if (field.StartsWith("Timestamp:"))    // Get a frame timestamp
+                {
+                    string[] dateParts = field.Split(' ');
+                    for (int i = 1; i < dateParts.Length; i++)
+                        _timestamp += " " + dateParts[i];
+
+                    try
+                    {
+                        var d = DateTime.Parse(_timestamp);
+                    }
+                    catch (FormatException e)
+                    {
+                        System.Diagnostics.Debug.WriteLine("Error: Timestamp parsing is failed. " + e.Message);
+                    }
+
+                }
+
             }
 
         }
@@ -469,10 +489,11 @@ namespace MJPEGStreamPlayer.Model
             // directly calling Dispose() is not necessary as MSDN told.
             var s = new MemoryStream(_frameBuffer, 0, _frameLength);
 
-            RaiseFrameCompleteEvent?.Invoke(this, new FrameRecievedEventArgs(s));
+            RaiseFrameCompleteEvent?.Invoke(this, new FrameRecievedEventArgs(s, _timestamp));
 
             _frameLength = 0;
             _contentLength = 0;
+            _timestamp = "";
 
             _counter++;
 
@@ -493,6 +514,7 @@ namespace MJPEGStreamPlayer.Model
         }
 
         #endregion Completed frame's methods
+
 
     }
 

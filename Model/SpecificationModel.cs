@@ -22,25 +22,30 @@ namespace MJPEGStreamPlayer.Model
     /// </remarks>
     class SpecificationModel
     {
-        private readonly string _url = "http://demo.macroscop.com:8080/configex?login=root";
+        private readonly string _domain;
+        private readonly string _url;
+
         private XmlDocument _doc;
         private List<Camera> _cameras;
         
         public List<Camera> Cameras { get { return _cameras; } }
 
-        public SpecificationModel()
+        public SpecificationModel(string url)
         {
+            (_domain, _url) = ParseServerUrl(url);
+
         }
 
         /// <summary>
         /// A static creation method, making the type its own factory
         /// </summary>
+        /// <param name="url">Server address</param>
         /// <returns></returns>
-        public static Task<SpecificationModel> CreateAsync()
+        public static Task<SpecificationModel> CreateAsync(string url)
         {
             try
             {
-                var ret = new SpecificationModel();
+                var ret = new SpecificationModel(url);
                 return ret.InitializeAsync();
             }
             catch(InvalidOperationException e)
@@ -54,7 +59,7 @@ namespace MJPEGStreamPlayer.Model
         {
             try
             {
-                _doc = await GetSpecInfoAsync();
+                _doc = await GetXmlDocAsync(_url);
                 return this;
             }
             catch(InvalidOperationException e)
@@ -63,7 +68,7 @@ namespace MJPEGStreamPlayer.Model
             }
         }
 
-        public async Task<XmlDocument> GetSpecInfoAsync()
+        public static async Task<XmlDocument> GetXmlDocAsync(string url)
         {
             XmlDocument doc = new XmlDocument();
 
@@ -73,7 +78,7 @@ namespace MJPEGStreamPlayer.Model
             {
                 try
                 {
-                    HttpResponseMessage response = await client.GetAsync(_url).ConfigureAwait(false);
+                    HttpResponseMessage response = await client.GetAsync(url).ConfigureAwait(false);
                     response.EnsureSuccessStatusCode();
                     string responseBody = await response.Content.ReadAsStringAsync();
                     doc.LoadXml(responseBody);
@@ -139,30 +144,88 @@ namespace MJPEGStreamPlayer.Model
 
         }
 
-        /// <summary>
-        /// Create a request URL is determined by a service provider
-        /// </summary>
-        /// <param name="camera">Camera class instance</param>
-        /// <returns></returns>
-        static public UriBuilder GetUriSelectedCamera(Camera camera)
+        public string GetStreamRequestUrl(Camera camera, DateTime? time = null)
         {
-            UriBuilder uriBuilder = new UriBuilder("http", "demo.macroscop.com", 8080, "mobile");
+            UriBuilder uriBuilder = new UriBuilder("http", _domain, 8080, "mobile");
 
-            using (var content = new FormUrlEncodedContent(new Dictionary<string, string>()
+            var dict = new Dictionary<string, string>()
             {
                 { "login", "root"},
                 { "channelid", camera.Id},
                 { "resolutionX", "640"},
                 { "resolutionY", "480"},
                 { "fps", "25"},
-            }))
+                //{"password", null },
+                //{"sound", "off" },
+                //{"speed",  "1"},
+                //{"channel",  camera.Name},
+            };
+
+            if (time.HasValue)
+            {
+                string template = "dd.MM.yyyy+HH:mm:ss";
+                dict["mode"] = "archive";
+                dict["startTime"] = time?.ToString(template);
+
+            }
+
+            using (var content = new FormUrlEncodedContent(dict))
             {
                 uriBuilder.Query = content.ReadAsStringAsync().Result;
             }
-            return uriBuilder;
+
+            return Uri.UnescapeDataString(uriBuilder.ToString());
 
         }
-     
+
+        public string GetArchiveUrl(Camera camera, DateTime from, DateTime until)
+        {
+            string templateDate = "dd.MM.yyyy";
+            string templateTime = "HH:mm:ss";
+
+            string sFrom = from.ToString(templateDate) + "%20" + from.ToString(templateTime);
+            string sUntil = until.ToString(templateDate) + "%20" + until.ToString(templateTime);
+
+            UriBuilder uriBuilder = new UriBuilder("http", _domain, 8080, "archivefragments");
+
+            var dict = new Dictionary<string, string>()
+            {
+                { "channelid", camera.Id},
+                { "fromtime", sFrom},
+                { "totime", sUntil},
+                { "login", "root"},
+
+            };
+
+            using (var content = new FormUrlEncodedContent(dict))
+            {
+                uriBuilder.Query = content.ReadAsStringAsync().Result;
+            }
+
+            return Uri.UnescapeDataString(uriBuilder.ToString());
+
+        }
+
+        private (string domain, string normalizedUrl) ParseServerUrl(string url)
+        {
+            try
+            {
+                Uri u = new Uri(url);
+                string domain = u.Host;
+                int port = u.Port;
+                UriBuilder uriBuilder = new UriBuilder("http", domain, port, "configex");
+                uriBuilder.Query = "login=root";
+                string normalizedUrl = uriBuilder.ToString();
+
+                return (domain, normalizedUrl);
+            }
+            catch (UriFormatException e)
+            {
+                throw new InvalidOperationException("Failed: Invalid server address. " + e.Message);
+            }
+
+        }
+
 
     }
 

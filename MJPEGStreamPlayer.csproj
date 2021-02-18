@@ -58,10 +58,12 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Compile Include="FrameRecievedEventArgs.cs" />
+    <Compile Include="Model\ArchiveFragment.cs" />
     <Compile Include="Model\Camera.cs" />
     <Compile Include="Model\MjpegStreamDecoder.cs" />
     <Compile Include="Model\SpecificationModel.cs" />
     <Compile Include="StreamFailedEventArgs.cs" />
+    <Compile Include="ViewModel\ArchiveFragmentViewModel.cs" />
     <Compile Include="ViewModel\CameraViewModel.cs" />
     <Compile Include="ViewModel\MainWindowViewModel.cs" />
     <Compile Include="ViewModel\NotifyPropertyChangedBase.cs" />

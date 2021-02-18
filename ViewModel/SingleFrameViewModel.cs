@@ -12,6 +12,7 @@ using System.Net.Sockets;
 using System.Net.Http;
 using System.Net;
 using System.Net.Sockets;
+using System.Xml;
 
 
 
@@ -19,17 +20,34 @@ namespace MJPEGStreamPlayer.ViewModel
 {
     class SingleFrameViewModel : NotifyPropertyChangedBase
     {
+        private SpecificationModel _spec;
+
         private bool _isError;
         private string _errorMessage;
 
-        private MjpegStreamDecoder _stream;
-        private ObservableCollection<CameraViewModel> _cameras;
         private BitmapImage _bitmap;
+        private string _utcTimestamp;
+
         private CancellationTokenSource _cts;
+        private MjpegStreamDecoder _stream;
+
+        private ObservableCollection<CameraViewModel> _cameras;
+        private ObservableCollection<ArchiveFragmentViewModel> _fragments;
 
         #region Property
-        public ObservableCollection<CameraViewModel> Cameras { get; private set; }
-        public BitmapImage Frame { get { return _bitmap; } }
+
+        public ReadOnlyObservableCollection<CameraViewModel> Cameras { get; }
+        public ReadOnlyObservableCollection<ArchiveFragmentViewModel> Fragments { get; }
+
+        public BitmapImage Frame
+        {
+            get { return _bitmap; }
+            set
+            {
+                _bitmap = value;
+                OnPropertyChanged(nameof(Frame));
+            }
+        }
         public bool Error 
         {
             get { return _isError; }
@@ -50,6 +68,22 @@ namespace MJPEGStreamPlayer.ViewModel
             }
         }
 
+        public string Timestamp
+        {
+            get { return _utcTimestamp; }
+            private set
+            {
+                if(value == "")
+                    _utcTimestamp = "";
+                else
+                    _utcTimestamp = DateTime.Parse(value).ToLocalTime().ToString();
+
+                OnPropertyChanged(nameof(Timestamp));
+
+            }
+        }
+
+
         #endregion Property
 
         #region Constructors
@@ -57,10 +91,16 @@ namespace MJPEGStreamPlayer.ViewModel
         public SingleFrameViewModel()
         {
             _cameras = new ObservableCollection<CameraViewModel>();
+            Cameras = new ReadOnlyObservableCollection<CameraViewModel>(_cameras);
+
             Error = false;
             SetStartScreen();
-            MakeDummyItem();
+            DummyInitCamera();
             _cts = new CancellationTokenSource();           // Intentional interruption
+            _utcTimestamp = "";
+
+            _fragments = new ObservableCollection<ArchiveFragmentViewModel>();
+            Fragments = new ReadOnlyObservableCollection<ArchiveFragmentViewModel>(_fragments);
 
             _stream = new MjpegStreamDecoder();
             _stream.RaiseFrameCompleteEvent += HandleFrameRecieved;
@@ -70,54 +110,40 @@ namespace MJPEGStreamPlayer.ViewModel
         }
 
         #endregion Constructors
+          
+        #region ChangeStream
 
-        #region misc
-   
-        private void MakeDummyItem(string text="None")
-        {
-            CameraViewModel empty = new CameraViewModel(new Camera(text, text));
-            _cameras.Add(empty);
-            Cameras = _cameras;
-        }
-
-        private void CloseStream()
-        {
-            _cts.Cancel();
-            Error = false;
-            _cts = new CancellationTokenSource();
-        }
-
-        #endregion misc
-
-        #region ChangeCamera
-
-        public async void ChangeCamera(CameraViewModel cameraVM)
+        public async void ChangeStream(CameraViewModel camera, DateTime? time)
         {
             CloseStream();
 
-            if(cameraVM.Name == "None")
+            if (camera.Id == null)      // Dummy camera 
             {
+                Timestamp = "";
+                _fragments.Clear();
                 SetStartScreen();
                 return;
             }
 
             CancellationToken token = _cts.Token;
-            string url = cameraVM.Url;
-            
+
+            InitFragmentsAsync(camera);
+
+            string url = _spec.GetStreamRequestUrl(camera.Model, time);
+
             try
             {
                 await _stream.StartAsync(url, token);
             }
             catch (OperationCanceledException)
             {
-                // Stream ended no error
-                System.Diagnostics.Debug.WriteLine("User cancel stream");
+                System.Diagnostics.Debug.WriteLine("User cancel stream.");
             }
 
         }
 
-        #endregion ChangeCamera
-
+        #endregion ChangeStream
+    
         #region Idle screen
 
         private void SetStartScreen()
@@ -147,10 +173,9 @@ namespace MJPEGStreamPlayer.ViewModel
             bitmap.EndInit();
             bitmap.Freeze();
 
-            _bitmap = bitmap;
+            Frame = bitmap;
+            Timestamp = e.Timestamp;
 
-            OnPropertyChanged(nameof(Frame));
-            
         }
      
         private void HandleStreamError(object sender, StreamFailedEventArgs e)
@@ -162,8 +187,88 @@ namespace MJPEGStreamPlayer.ViewModel
         {
             Error = false;
         }
-     
+
         #endregion Event handler
+
+        #region InitFragmentsAsync
+
+        /// <summary>
+        /// Preview archive fragments
+        /// </summary>
+        /// <param name="camera">Selected camera</param>
+        /// <returns></returns>
+        /// <remarks>
+        /// TODO: Improve performance. Solve freeze behavior. 
+        /// </remarks>
+        private async Task InitFragmentsAsync(CameraViewModel camera)
+        {
+            try
+            {
+                _fragments.Clear();
+                camera.Model.Fragments.Clear();
+
+                DateTime dateEnd = DateTime.Now.ToUniversalTime();
+                DateTime dateStart = new DateTime(year: dateEnd.Year - 1,
+                                                  month: dateEnd.Month,
+                                                  day: dateEnd.Day,
+                                                  hour: dateEnd.Hour,
+                                                  minute: dateEnd.Minute,
+                                                  second: dateEnd.Second);
+
+                string url = _spec.GetArchiveUrl(camera.Model, dateStart, dateEnd);
+                XmlDocument doc = await SpecificationModel.GetXmlDocAsync(url);
+                await camera.Model.InitFragments(doc);
+
+                foreach (ArchiveFragment f in camera.Model.Fragments)
+                    _fragments.Add(new ArchiveFragmentViewModel(f.FromTime, f.ToTime));
+
+            }
+            catch (InvalidOperationException e)
+            {
+                System.Diagnostics.Debug.WriteLine(e.Message);
+            }
+
+        }
+
+        #endregion InitFragmentsAsync
+
+        #region misc
+
+        private void DummyInitCamera(string text = "None")
+        {
+            _cameras.Clear();
+            CameraViewModel empty = new CameraViewModel(new Camera(name: text, id: null));
+            _cameras.Add(empty);
+        }
+
+        private void CloseStream()
+        {
+            _cts.Cancel();
+            Error = false;
+            _cts = new CancellationTokenSource();
+        }
+
+        public void SetServer(SpecificationModel spec)
+        {
+            _spec = spec;
+            InitCameras();
+        }
+
+        private void InitCameras()
+        {
+            DummyInitCamera();
+            foreach (Camera c in _spec.Cameras)
+                _cameras.Add(new CameraViewModel(c));
+
+        }
+
+        public void RemoveServer()
+        {
+            DummyInitCamera();
+        }
+
+        #endregion misc
+
 
     }
 

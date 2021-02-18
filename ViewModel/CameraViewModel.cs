@@ -11,24 +11,10 @@ namespace MJPEGStreamPlayer.ViewModel
     {
         private Camera _camera;
 
-        public Camera Model { get { return _camera; } } 
+        public Camera Model { get { return _camera; } }
+        public string Name { get { return _camera.Name; } }
+        public string Id { get { return _camera.Id; } }
 
-        public string Name
-        {
-            get { return _camera.Name; }
-        }
-        public string Id
-        {
-            get { return _camera.Id; }
-        }
-
-        public string Url
-        {
-            get
-            {
-                return SpecificationModel.GetUriSelectedCamera(_camera).ToString(); 
-            }
-        }
         public CameraViewModel(Camera camera)
         {
             _camera = camera;

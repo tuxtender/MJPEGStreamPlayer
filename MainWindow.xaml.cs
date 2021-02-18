@@ -12,6 +12,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using MJPEGStreamPlayer.ViewModel;
+
 
 namespace MJPEGStreamPlayer
 {
@@ -24,5 +26,16 @@ namespace MJPEGStreamPlayer
         {
             InitializeComponent();
         }
+
+        private async void changeServer_Click(object sender, RoutedEventArgs e)
+        {
+            var mv = (MainWindowViewModel)DataContext;
+            await mv.InitSpecificationModelAsync(url.Text);
+            singleFrame.cameraBox.SelectedIndex = 0;
+        }
+
+
     }
+
+
 }
